@@ -23,11 +23,11 @@ struct GameView: View {
                 Spacer()
             }
 
-            VStack {
-                Spacer()
-                debugReadout
-                    .padding(.bottom, 12)
-            }
+//            VStack {
+//                Spacer()
+//                debugReadout
+//                    .padding(.bottom, 12)
+//            }
         }
     }
 
