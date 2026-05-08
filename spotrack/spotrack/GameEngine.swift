@@ -114,8 +114,10 @@ final class GameEngine {
                 let points = data
                     .filter { $0.state == .touching || $0.state == .making || $0.state == .starting }
                     .map { CGPoint(x: CGFloat($0.position.x), y: CGFloat($0.position.y)) }
+                // Reject inputs with more than 4 fingers — keeps the game honest
+                let valid = points.count > 4 ? [] : points
                 await MainActor.run {
-                    self?.fingers = points
+                    self?.fingers = valid
                 }
             }
         }
