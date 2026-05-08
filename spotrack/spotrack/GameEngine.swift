@@ -116,6 +116,8 @@ final class GameEngine {
         litCount = 0
         lastUpdateTime = Date()
 
+        lockInput()
+
         _ = touchManager.startListening()
 
         let stream = touchManager.touchDataStream
@@ -165,11 +167,32 @@ final class GameEngine {
         touchTask = nil
         _ = touchManager.stopListening()
         fingers = []
+        unlockInput()
         state = .gameOver
     }
 
     func returnToMenu() {
         state = .menu
+    }
+
+    // MARK: - Input lock
+
+    private var inputLocked = false
+
+    private func lockInput() {
+        guard !inputLocked else { return }
+        inputLocked = true
+        NSCursor.hide()
+        // CGAssociateMouseAndMouseCursorPosition and NSApp.presentationOptions were
+        // tried here but stalled the main run loop (the timer and the touch async
+        // stream both stopped firing), so they're left out. Cursor hiding is the
+        // safe subset that doesn't interfere with event delivery.
+    }
+
+    private func unlockInput() {
+        guard inputLocked else { return }
+        inputLocked = false
+        NSCursor.unhide()
     }
 
     private func update() {
