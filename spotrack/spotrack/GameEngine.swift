@@ -1,6 +1,16 @@
 import SwiftUI
 import OpenMultitouchSupport
 
+struct Finger: Sendable {
+    var position: CGPoint
+    /// ~0.08 (resting) to ~2.58 (firm press). Used to scale beam/pool brightness.
+    var intensity: CGFloat
+    var rawPressure: Float
+    var rawDensity: Float
+    /// raw signal divided by per-source scale, clamped to 0...1 (pre-gamma).
+    var normalized: Float
+}
+
 struct GameCharacter: Identifiable {
     let id: Int
     var x: CGFloat
@@ -81,7 +91,7 @@ final class GameEngine {
     static let gameDuration: Double = 60
 
     var characters: [GameCharacter] = []
-    var fingers: [CGPoint] = []
+    var fingers: [Finger] = []
     var score: Int = 0
     var timeRemaining: Double = 60
     var state: GameState = .menu
@@ -111,11 +121,30 @@ final class GameEngine {
         let stream = touchManager.touchDataStream
         touchTask = Task { [weak self] in
             for await data in stream {
-                let points = data
-                    .filter { $0.state == .touching || $0.state == .making || $0.state == .starting }
-                    .map { CGPoint(x: CGFloat($0.position.x), y: CGFloat($0.position.y)) }
+                let active = data.filter {
+                    $0.state == .touching || $0.state == .making || $0.state == .starting
+                }
+                let mapped = active.map { touch -> Finger in
+                    // pressure/density from MultitouchSupport are NOT normalized to 0..1 —
+                    // observed values run 10..20+ for pressure and ~1.5 for density on a
+                    // resting finger. Divide by an empirical full-press estimate, then
+                    // clamp + gamma so casual rest sits near zero while a firm press
+                    // saturates.
+                    let useP = touch.pressure > 0.001
+                    let raw: Float = useP ? touch.pressure : touch.density
+                    let scale: Float = useP ? 60.0 : 6.0
+                    let normalized = max(Float(0), min(Float(1), raw / scale))
+                    let curved = pow(CGFloat(normalized), 3.0)
+                    return Finger(
+                        position: CGPoint(x: CGFloat(touch.position.x), y: CGFloat(touch.position.y)),
+                        intensity: 0.08 + 2.5 * curved,
+                        rawPressure: touch.pressure,
+                        rawDensity: touch.density,
+                        normalized: normalized
+                    )
+                }
                 // Reject inputs with more than 4 fingers — keeps the game honest
-                let valid = points.count > 4 ? [] : points
+                let valid = mapped.count > 4 ? [] : mapped
                 await MainActor.run {
                     self?.fingers = valid
                 }
@@ -163,29 +192,40 @@ final class GameEngine {
         }
 
         var currentLit = 0
+        var totalIntensity: Double = 0
         for i in characters.indices {
             characters[i].update(dt: dt)
 
             let cx = characters[i].x
             let cy = characters[i].y + Self.characterRadius
 
-            let isLit = fingers.contains { f in
-                let dx = f.x - cx
-                let dy = f.y - cy
-                return sqrt(dx * dx + dy * dy) < Self.spotlightRadius + Self.characterRadius
+            // Strongest spotlight on this character — multiple fingers don't stack,
+            // it's the brightest beam that decides the per-character score factor.
+            var maxIntensity: CGFloat = 0
+            for f in fingers {
+                let dx = f.position.x - cx
+                let dy = f.position.y - cy
+                if sqrt(dx * dx + dy * dy) < Self.spotlightRadius + Self.characterRadius {
+                    maxIntensity = max(maxIntensity, f.intensity)
+                }
             }
 
+            let isLit = maxIntensity > 0
             characters[i].isLit = isLit
             if isLit {
                 currentLit += 1
                 characters[i].litDuration += Double(dt)
+                totalIntensity += Double(maxIntensity)
             }
         }
 
         litCount = currentLit
         if currentLit > 0 {
-            let mult = Double(currentLit)
-            scoreAccumulator += Double(dt) * 10.0 * mult * mult
+            // combo (litCount) × intensity sum — pressing harder on a character
+            // multiplies its contribution; lighting more characters at once still
+            // compounds via the combo factor.
+            let combo = Double(currentLit)
+            scoreAccumulator += Double(dt) * 10.0 * combo * totalIntensity
             score = Int(scoreAccumulator)
         }
     }

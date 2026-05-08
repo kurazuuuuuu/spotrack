@@ -22,7 +22,34 @@ struct GameView: View {
                 }
                 Spacer()
             }
+
+            VStack {
+                Spacer()
+                debugReadout
+                    .padding(.bottom, 12)
+            }
         }
+    }
+
+    // MARK: - Debug
+
+    private var debugReadout: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("fingers: \(engine.fingers.count)")
+                .foregroundStyle(.white.opacity(0.7))
+            ForEach(Array(engine.fingers.enumerated()), id: \.offset) { idx, f in
+                Text(String(
+                    format: "[%d] p=%6.2f  d=%6.3f  →  n=%.3f  i=%.3f",
+                    idx, f.rawPressure, f.rawDensity, Double(f.normalized), Double(f.intensity)
+                ))
+                .foregroundStyle(.green.opacity(0.9))
+            }
+        }
+        .font(.system(size: 13, weight: .medium, design: .monospaced))
+        .padding(10)
+        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - HUD
@@ -95,11 +122,12 @@ struct GameView: View {
 
         for finger in engine.fingers {
             let target = CGPoint(
-                x: finger.x * size.width,
-                y: (1 - finger.y) * size.height
+                x: finger.position.x * size.width,
+                y: (1 - finger.position.y) * size.height
             )
             let radius = GameEngine.spotlightRadius * size.width
             let targetHalfWidth = radius * 0.9
+            let i = Double(finger.intensity)
 
             let dx = target.x - source.x
             let dy = target.y - source.y
@@ -117,9 +145,9 @@ struct GameView: View {
             beam.closeSubpath()
 
             let beamGradient = Gradient(stops: [
-                .init(color: Color(white: 1.0, opacity: 0.22), location: 0),
-                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.10), location: 0.55),
-                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.02), location: 0.85),
+                .init(color: Color(white: 1.0, opacity: min(1.0, 0.22 * i)), location: 0),
+                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: min(1.0, 0.10 * i)), location: 0.55),
+                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: min(1.0, 0.02 * i)), location: 0.85),
                 .init(color: .clear, location: 1.0),
             ])
 
@@ -139,9 +167,9 @@ struct GameView: View {
                 height: radius * 3.2
             )
             let poolGradient = Gradient(stops: [
-                .init(color: Color(white: 1.0, opacity: 0.28), location: 0),
-                .init(color: Color(hue: 0.13, saturation: 0.35, brightness: 1.0, opacity: 0.12), location: 0.45),
-                .init(color: Color(hue: 0.13, saturation: 0.4, brightness: 1.0, opacity: 0.03), location: 0.85),
+                .init(color: Color(white: 1.0, opacity: min(1.0, 0.28 * i)), location: 0),
+                .init(color: Color(hue: 0.13, saturation: 0.35, brightness: 1.0, opacity: min(1.0, 0.12 * i)), location: 0.45),
+                .init(color: Color(hue: 0.13, saturation: 0.4, brightness: 1.0, opacity: min(1.0, 0.03 * i)), location: 0.85),
                 .init(color: .clear, location: 1.0),
             ])
             ctx.fill(
@@ -159,7 +187,7 @@ struct GameView: View {
             ctx.fill(
                 Path(ellipseIn: hotRect),
                 with: .radialGradient(
-                    Gradient(colors: [Color(white: 1.0, opacity: 0.35), .clear]),
+                    Gradient(colors: [Color(white: 1.0, opacity: min(1.0, 0.35 * i)), .clear]),
                     center: target, startRadius: 0, endRadius: radius * 0.7
                 )
             )
