@@ -11,7 +11,6 @@ struct GameView: View {
                     drawBackground(in: &context, size: size)
                     drawSpotlights(in: &context, size: size)
                     drawCharacters(in: &context, size: size, time: time)
-                    drawNameTags(in: &context, size: size)
                 }
             }
 
@@ -302,21 +301,4 @@ struct GameView: View {
         }
     }
 
-    // MARK: - Name Tags
-
-    private func drawNameTags(in context: inout GraphicsContext, size: CGSize) {
-        let r = GameEngine.characterRadius * size.width
-
-        for char in engine.characters where char.isLit {
-            let x = char.x * size.width
-            let y = (1 - char.y) * size.height
-            let tagY = y - r * 3.8
-
-            let text = Text(char.name)
-                .font(.system(size: max(9, r * 0.6), weight: .bold))
-                .foregroundStyle(char.color)
-            let resolved = context.resolve(text)
-            context.draw(resolved, at: CGPoint(x: x, y: tagY), anchor: .center)
-        }
-    }
 }
