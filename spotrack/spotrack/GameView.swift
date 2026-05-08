@@ -31,27 +31,27 @@ struct GameView: View {
     private var hudBar: some View {
         HStack {
             Text("\(engine.score)")
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
+                .font(.system(size: 44, weight: .bold, design: .monospaced))
                 .foregroundStyle(.white)
-                .shadow(color: .white.opacity(0.5), radius: 10)
+                .shadow(color: .white.opacity(0.5), radius: 12)
 
             Spacer()
 
             let seconds = Int(engine.timeRemaining)
             let fraction = Int((engine.timeRemaining - Double(seconds)) * 100)
             Text(String(format: "%d.%02d", seconds, fraction))
-                .font(.system(size: 28, weight: .medium, design: .monospaced))
+                .font(.system(size: 36, weight: .medium, design: .monospaced))
                 .foregroundStyle(engine.timeRemaining < 10 ? .red : .white.opacity(0.8))
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.horizontal, 28)
+        .padding(.top, 18)
     }
 
     private var comboIndicator: some View {
-        Text("x\(engine.litCount) COMBO")
-            .font(.system(size: 48, weight: .heavy, design: .rounded))
+        Text("×\(engine.litCount) コンボ")
+            .font(.system(size: 64, weight: .heavy, design: .rounded))
             .foregroundStyle(.yellow)
-            .shadow(color: .yellow.opacity(0.8), radius: 20)
+            .shadow(color: .yellow.opacity(0.8), radius: 24)
     }
 
     // MARK: - Background
@@ -90,45 +90,99 @@ struct GameView: View {
         var ctx = context
         ctx.blendMode = .plusLighter
 
+        // Light source mounted on the ceiling, slightly above the visible frame
+        let source = CGPoint(x: size.width / 2, y: -size.height * 0.04)
+        let sourceHalfWidth: CGFloat = max(6, size.width * 0.008)
+
         for finger in engine.fingers {
-            let center = CGPoint(
+            let target = CGPoint(
                 x: finger.x * size.width,
                 y: (1 - finger.y) * size.height
             )
             let radius = GameEngine.spotlightRadius * size.width
+            let targetHalfWidth = radius * 0.9
 
-            let gradient = Gradient(stops: [
-                .init(color: Color(white: 1.0, opacity: 0.12), location: 0),
-                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.06), location: 0.4),
-                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.02), location: 0.8),
+            let dx = target.x - source.x
+            let dy = target.y - source.y
+            let len = sqrt(dx * dx + dy * dy)
+            guard len > 1 else { continue }
+            let nx = -dy / len
+            let ny = dx / len
+
+            // Cone-shaped beam from source to target
+            var beam = Path()
+            beam.move(to: CGPoint(x: source.x + nx * sourceHalfWidth, y: source.y + ny * sourceHalfWidth))
+            beam.addLine(to: CGPoint(x: source.x - nx * sourceHalfWidth, y: source.y - ny * sourceHalfWidth))
+            beam.addLine(to: CGPoint(x: target.x - nx * targetHalfWidth, y: target.y - ny * targetHalfWidth))
+            beam.addLine(to: CGPoint(x: target.x + nx * targetHalfWidth, y: target.y + ny * targetHalfWidth))
+            beam.closeSubpath()
+
+            let beamGradient = Gradient(stops: [
+                .init(color: Color(white: 1.0, opacity: 0.22), location: 0),
+                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.10), location: 0.55),
+                .init(color: Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.02), location: 0.85),
                 .init(color: .clear, location: 1.0),
             ])
 
-            let rect = CGRect(
-                x: center.x - radius * 1.5,
-                y: center.y - radius * 1.5,
-                width: radius * 3,
-                height: radius * 3
-            )
-            ctx.fill(
-                Path(ellipseIn: rect),
-                with: .radialGradient(gradient, center: center, startRadius: 0, endRadius: radius * 1.5)
+            // Blur the beam so the trapezoid edges feather into the surrounding dark
+            var blurred = ctx
+            blurred.addFilter(.blur(radius: max(8, size.width * 0.012)))
+            blurred.fill(
+                beam,
+                with: .linearGradient(beamGradient, startPoint: source, endPoint: target)
             )
 
-            let innerGradient = Gradient(stops: [
-                .init(color: Color(white: 1.0, opacity: 0.2), location: 0),
-                .init(color: Color(white: 1.0, opacity: 0.05), location: 0.6),
+            // Bright pool of light where the beam lands
+            let poolRect = CGRect(
+                x: target.x - radius * 1.6,
+                y: target.y - radius * 1.6,
+                width: radius * 3.2,
+                height: radius * 3.2
+            )
+            let poolGradient = Gradient(stops: [
+                .init(color: Color(white: 1.0, opacity: 0.28), location: 0),
+                .init(color: Color(hue: 0.13, saturation: 0.35, brightness: 1.0, opacity: 0.12), location: 0.45),
+                .init(color: Color(hue: 0.13, saturation: 0.4, brightness: 1.0, opacity: 0.03), location: 0.85),
                 .init(color: .clear, location: 1.0),
             ])
-            let innerRect = CGRect(
-                x: center.x - radius,
-                y: center.y - radius,
-                width: radius * 2,
-                height: radius * 2
+            ctx.fill(
+                Path(ellipseIn: poolRect),
+                with: .radialGradient(poolGradient, center: target, startRadius: 0, endRadius: radius * 1.6)
+            )
+
+            // Inner hot spot
+            let hotRect = CGRect(
+                x: target.x - radius * 0.7,
+                y: target.y - radius * 0.7,
+                width: radius * 1.4,
+                height: radius * 1.4
             )
             ctx.fill(
-                Path(ellipseIn: innerRect),
-                with: .radialGradient(innerGradient, center: center, startRadius: 0, endRadius: radius)
+                Path(ellipseIn: hotRect),
+                with: .radialGradient(
+                    Gradient(colors: [Color(white: 1.0, opacity: 0.35), .clear]),
+                    center: target, startRadius: 0, endRadius: radius * 0.7
+                )
+            )
+        }
+
+        // Light source fixture glow at the ceiling
+        if !engine.fingers.isEmpty {
+            let glowR = size.width * 0.07
+            let glowRect = CGRect(
+                x: source.x - glowR, y: source.y - glowR,
+                width: glowR * 2, height: glowR * 2
+            )
+            ctx.fill(
+                Path(ellipseIn: glowRect),
+                with: .radialGradient(
+                    Gradient(colors: [
+                        Color(white: 1.0, opacity: 0.45),
+                        Color(hue: 0.13, saturation: 0.3, brightness: 1.0, opacity: 0.15),
+                        .clear,
+                    ]),
+                    center: source, startRadius: 0, endRadius: glowR
+                )
             )
         }
     }
